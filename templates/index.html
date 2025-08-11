@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI Smart Detection System</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <style>
+    body { background-color: #f0f2f5; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    .media-container {
+      position: relative; width: 100%; background-color: #000;
+      border-radius: .5rem; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    .media-container video, .media-container img, .media-container canvas {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain;
+    }
+    .media-container canvas { pointer-events: none; }
+    .nav-pills .nav-link.active { background-color: #0d6efd; color: #fff; }
+    .nav-pills .nav-link { color: #0d6efd; }
+    .drop-zone {
+      border: 2px dashed #0d6efd; border-radius: .5rem; padding: 50px;
+      text-align: center; cursor: pointer; transition: background-color 0.2s;
+    }
+    .drop-zone.dragover { background-color: #e9ecef; }
+    .results-list { max-height: 300px; overflow-y: auto; }
+  </style>
+</head>
+<body>
+<div class="container my-5">
+  <div class="text-center mb-5">
+    <h1 class="display-5 fw-bold">AI Smart Detection System</h1>
+    <p class="text-muted fs-5">Real-time analysis for safety and compliance.</p>
+  </div>
+
+  <ul class="nav nav-pills justify-content-center mb-4" id="pills-tab" role="tablist">
+    <li class="nav-item" role="presentation"><button class="nav-link active" data-bs-toggle="pill" data-bs-target="#pills-live"><i class="bi bi-camera-video-fill"></i> Live Analysis</button></li>
+    <li class="nav-item" role="presentation"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#pills-upload"><i class="bi bi-upload"></i> Image Upload</button></li>
+  </ul>
+
+  <div class="tab-content" id="pills-tabContent">
+    <!-- LIVE TAB -->
+    <div class="tab-pane fade show active" id="pills-live" role="tabpanel" aria-labelledby="pills-live-tab">
+      <div class="card shadow-sm"><div class="card-body"><div class="row align-items-center">
+        <div class="col-lg-8">
+          <div class="media-container" style="padding-top: 56.25%;">
+            <video id="videoElement" autoplay muted playsinline></video>
+            <canvas id="liveCanvas"></canvas>
+          </div>
+        </div>
+        <div class="col-lg-4 mt-4 mt-lg-0">
+          <h5><i class="bi bi-gear-fill"></i> Controls</h5>
+          <div class="d-grid gap-2">
+            <button id="startLiveBtn" class="btn btn-primary" disabled><i class="bi bi-play-circle"></i> Start</button>
+            <button id="stopLiveBtn" class="btn btn-danger" disabled><i class="bi bi-stop-circle"></i> Stop</button>
+          </div>
+          <hr>
+          <h5><i class="bi bi-card-list"></i> Results</h5>
+          <div id="liveResultList" class="results-list"></div>
+        </div>
+      </div></div></div>
+    </div>
+
+    <!-- UPLOAD TAB -->
+    <div class="tab-pane fade" id="pills-upload" role="tabpanel" aria-labelledby="pills-upload-tab">
+      <div class="card shadow-sm"><div class="card-body"><div class="row align-items-center">
+        <div class="col-lg-8">
+          <div id="upload-drop-zone" class="drop-zone">
+            <p class="fs-5"><i class="bi bi-cloud-arrow-up-fill fs-1"></i><br>Drag & drop or click to select</p>
+            <input type="file" id="fileInput" hidden accept="image/*">
+          </div>
+          <div id="upload-media-container" class="media-container d-none"><img id="uploadedImage"/><canvas id="uploadCanvas"></canvas></div>
+        </div>
+        <div class="col-lg-4 mt-4 mt-lg-0">
+            <div class="d-flex justify-content-between align-items-center">
+                <h5><i class="bi bi-card-list"></i> Results</h5>
+                <button id="resetUploadBtn" class="btn btn-sm btn-secondary d-none"><i class="bi bi-arrow-left"></i> Upload Another</button>
+            </div><hr class="my-2">
+          <div id="uploadStatus"><p class="text-muted">Upload an image to see results.</p></div>
+          <div id="uploadResultList" class="results-list mt-2"></div>
+        </div>
+      </div></div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const CLASS_COLORS = {
+  "without_mask": "rgba(255, 70, 70, 1)",
+  "mask_weared_incorrect": "rgba(255, 200, 0, 1)",
+  "with_mask": "rgba(0, 255, 120, 1)",
+  "Hand on Mouth": "rgba(255, 0, 255, 1)" // Purple for hand on mouth
+};
+const PERSON_BOX_COLOR = "rgba(0, 191, 255, 1)"; // Deep sky blue
+
+function drawOverlays(canvas, sourceElement, data) {
+    const ctx = canvas.getContext('2d');
+    const sourceWidth = sourceElement.videoWidth || sourceElement.naturalWidth;
+    const sourceHeight = sourceElement.videoHeight || sourceElement.naturalHeight;
+    canvas.width = sourceWidth;
+    canvas.height = sourceHeight;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (!data) return;
+
+    // Draw social distancing lines
+    (data.social_distancing || []).forEach(line => {
+        ctx.strokeStyle = line.safe ? "rgba(0,255,0,0.8)" : "rgba(255,0,0,0.9)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(line.from[0], line.from[1]);
+        ctx.lineTo(line.to[0], line.to[1]);
+        ctx.stroke();
+        ctx.fillStyle = ctx.strokeStyle;
+        ctx.font = "bold 14px Arial";
+        ctx.fillText(line.distance, (line.from[0] + line.to[0])/2, (line.from[1] + line.to[1])/2);
+    });
+
+    // Draw person boxes (for social distancing visualization)
+    (data.person_boxes || []).forEach(box => {
+        ctx.strokeStyle = PERSON_BOX_COLOR;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(box[0], box[1], box[2] - box[0], box[3] - box[1]);
+    });
+    
+    // Draw face detections (mask, no mask, hand on mouth)
+    (data.face_detections || []).forEach(det => {
+        const [x1, y1, x2, y2] = det.box;
+        const color = CLASS_COLORS[det.label] || "rgba(200, 200, 200, 0.9)";
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 3;
+        ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+        const text = `${det.label} (${(det.confidence * 100).toFixed(0)}%)`;
+        ctx.font = "bold 16px Arial";
+        const textMetrics = ctx.measureText(text);
+        ctx.fillStyle = color;
+        ctx.fillRect(x1, y1 - 22, textMetrics.width + 10, 22);
+        ctx.fillStyle = "#FFFFFF";
+        ctx.fillText(text, x1 + 5, y1 - 5);
+    });
+}
+
+function updateResultsList(containerElem, data) {
+    containerElem.innerHTML = '';
+    const detections = data?.face_detections;
+    if (!detections || detections.length === 0) {
+        containerElem.innerHTML = '<p class="text-muted">No detections.</p>'; return;
+    }
+    const counts = detections.reduce((acc, d) => (acc[d.label] = (acc[d.label] || 0) + 1, acc), {});
+    const ul = document.createElement('ul');
+    ul.className = 'list-group list-group-flush';
+    for (const [label, count] of Object.entries(counts)) {
+        const li = document.createElement('li');
+        li.className = 'list-group-item d-flex justify-content-between align-items-center';
+        li.innerHTML = `${label} <span class="badge rounded-pill" style="background-color:${CLASS_COLORS[label] || '#0d6efd'}">${count}</span>`;
+        ul.appendChild(li);
+    }
+    containerElem.appendChild(ul);
+}
+
+// All the JavaScript for camera setup, file handling, and fetch calls remains the same.
+const videoElement = document.getElementById('videoElement');
+const liveCanvas = document.getElementById('liveCanvas');
+const startLiveBtn = document.getElementById('startLiveBtn');
+const stopLiveBtn = document.getElementById('stopLiveBtn');
+const liveResultList = document.getElementById('liveResultList');
+let liveInterval = null;
+let isProcessing = false;
+
+async function setupCamera() {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+        videoElement.srcObject = stream;
+        videoElement.onloadedmetadata = () => { startLiveBtn.disabled = false; };
+    } catch (err) { alert("Camera access denied."); }
+}
+startLiveBtn.addEventListener('click', () => {
+    startLiveBtn.disabled = true; stopLiveBtn.disabled = false;
+    liveInterval = setInterval(async () => {
+        if (isProcessing) return;
+        isProcessing = true;
+        const captureCanvas = document.createElement('canvas');
+        captureCanvas.width = videoElement.videoWidth;
+        captureCanvas.height = videoElement.videoHeight;
+        captureCanvas.getContext('2d').drawImage(videoElement, 0, 0);
+        try {
+            const res = await fetch("/process_image", {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ image: captureCanvas.toDataURL("image/jpeg"), mode: "live" })
+            });
+            const data = await res.json();
+            drawOverlays(liveCanvas, videoElement, data);
+            updateResultsList(liveResultList, data);
+        } catch(e) { console.error("Error processing frame:", e); }
+        finally { isProcessing = false; }
+    }, 400);
+});
+stopLiveBtn.addEventListener('click', () => {
+    if (liveInterval) clearInterval(liveInterval);
+    liveInterval = null;
+    startLiveBtn.disabled = false; stopLiveBtn.disabled = true;
+    liveCanvas.getContext('2d').clearRect(0, 0, liveCanvas.width, liveCanvas.height);
+});
+
+const dropZone = document.getElementById('upload-drop-zone');
+const fileInput = document.getElementById('fileInput');
+const uploadContainer = document.getElementById('upload-media-container');
+const uploadedImage = document.getElementById('uploadedImage');
+const uploadCanvas = document.getElementById('uploadCanvas');
+const uploadStatus = document.getElementById('uploadStatus');
+const uploadResultList = document.getElementById('uploadResultList');
+const resetUploadBtn = document.getElementById('resetUploadBtn');
+
+function resetUploadUI() {
+    uploadContainer.classList.add('d-none'); dropZone.classList.remove('d-none');
+    resetUploadBtn.classList.add('d-none');
+    uploadStatus.innerHTML = '<p class="text-muted">Upload an image to see results.</p>';
+    uploadResultList.innerHTML = ''; fileInput.value = null;
+}
+dropZone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', e => handleFiles(e.target.files));
+dropZone.addEventListener('dragover', e => { e.preventDefault(); e.currentTarget.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', e => e.currentTarget.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => { e.preventDefault(); e.currentTarget.classList.remove('dragover'); handleFiles(e.dataTransfer.files); });
+resetUploadBtn.addEventListener('click', resetUploadUI);
+
+async function handleFiles(files) {
+    const file = files[0];
+    if (!file || !file.type.startsWith('image/')) return;
+    uploadStatus.innerHTML = '<div class="d-flex align-items-center gap-2"><div class="spinner-border spinner-border-sm"></div><span>Analyzing...</span></div>';
+    const reader = new FileReader();
+    reader.onload = e => {
+        uploadedImage.src = e.target.result;
+        uploadedImage.onload = async () => {
+            dropZone.classList.add('d-none');
+            uploadContainer.classList.remove('d-none');
+            uploadContainer.style.paddingTop = `${(uploadedImage.naturalHeight / uploadedImage.naturalWidth) * 100}%`;
+            try {
+                const res = await fetch("/process_image", {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ image: e.target.result, mode: "upload" })
+                });
+                const data = await res.json();
+                uploadStatus.innerHTML = '<p class="text-success fw-bold">Analysis complete.</p>';
+                drawOverlays(uploadCanvas, uploadedImage, data);
+                updateResultsList(uploadResultList, data);
+            } catch (e) {
+                console.error("Error processing image:", e);
+                uploadStatus.innerHTML = '<p class="text-danger">An error occurred during analysis.</p>';
+            }
+            resetUploadBtn.classList.remove('d-none');
+        };
+    };
+    reader.readAsDataURL(file);
+}
+
+setupCamera();
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
