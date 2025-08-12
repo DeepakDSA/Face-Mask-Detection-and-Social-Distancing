@@ -1,5 +1,4 @@
-flask
-gunicorn
-numpy
-opencv-python-headless
+gradio
 ultralytics
+opencv-python-headless
+numpy
