@@ -1,4 +1,4 @@
-gradio
-ultralytics
-opencv-python-headless
+flask
 numpy
+opencv-python
+ultralytics

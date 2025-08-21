@@ -28,7 +28,6 @@ def bbox_overlap(face_box, hand_box):
     return interArea / float(faceBoxArea)
 
 # --- YOUR DISTANCE CALIBRATION LOGIC ---
-# Using the exact functions and constants from your script
 KNOWN_DISTANCE_CM = 100
 KNOWN_HEIGHT_PX = 390
 
@@ -40,24 +39,19 @@ def estimate_distance_cm(height_px):
 
 def calculate_distance(p1, h1, p2, h2):
     """
-    Estimates the 3D distance between two people using your proven logic.
+    Estimates the 3D distance between two people using your proven local script's logic.
     """
     d1 = estimate_distance_cm(h1)
     d2 = estimate_distance_cm(h2)
     dx_px = abs(p1[0] - p2[0])
     
-    # Use an average pixel-to-cm ratio for horizontal distance
     avg_height_px = (h1 + h2) / 2
     if avg_height_px == 0: return float('inf')
-    px_per_cm_at_known_dist = KNOWN_HEIGHT_PX / KNOWN_DISTANCE_CM
-    # Scale this ratio based on the average estimated distance
-    # This is a simplification; a full perspective transform would be more accurate
-    # but this is a good approximation.
-    avg_dist = (d1 + d2) / 2
-    px_per_cm = px_per_cm_at_known_dist * (KNOWN_DISTANCE_CM / avg_dist) if avg_dist > 0 else px_per_cm_at_known_dist
-
-    dx_cm = dx_px / px_per_cm if px_per_cm > 0 else 0
     
+    # Simple ratio calculation from your script
+    px_per_cm = avg_height_px / KNOWN_DISTANCE_CM 
+    
+    dx_cm = dx_px / px_per_cm if px_per_cm > 0 else 0
     dz = abs(d1 - d2)
     
     return round(math.hypot(dx_cm, dz), 1)
